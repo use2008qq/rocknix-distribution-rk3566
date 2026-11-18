@@ -22,25 +22,24 @@ RK3566 / GM800 构建过程中写的排障与保障脚本。
 
 **新机器首次构建：**
 
+完整流程见 [`documentation/PER_DEVICE_DOCUMENTATION/RK3566/NEW-MACHINE-BUILD.md`](../../documentation/PER_DEVICE_DOCUMENTATION/RK3566/NEW-MACHINE-BUILD.md)。
+
 ```bash
 git clone https://github.com/use2008qq/rocknix-distribution-rk3566.git
 cd rocknix-distribution-rk3566
 
-# 下载源码快照（8 卷，共 8.3G，直连约 20 分钟）
-gh release download sources-20261118 \
-  --repo use2008qq/rocknix-distribution-rk3566 \
-  --pattern '*.part-*' --pattern '*.sha256' \
-  --dir ./snapshot
+# 1) 取快照：内网 scp 最可靠（Release 上传通了但国内下载不通）
+scp -r root@192.168.6.79:/root/sources-snapshot ./
 
-# 还原本地源码（自动识别分卷、自动校验 sha256）
-tools/rk3566-port/restore-sources.sh . ./snapshot/sources-git-20261118-1157.tar.zst.part-00
+# 2) 还原（自动合并分卷、校验 sha256、修正属主、检查 detached HEAD）
+tools/rk3566-port/restore-sources.sh . ./sources-snapshot
 
-# 剩余 1600+ 个 tarball 仍需下载，但几乎不会失败
-su builder -c './scripts/build_distro'
+# 3) 构建（必须以普通用户运行）
+make RK3566
 ```
 
-> 快照地址：https://github.com/use2008qq/rocknix-distribution-rk3566/releases/tag/sources-20261118
-> 下载时**不要走代理**：实测直连 7.2 MB/s，走代理仅 575 KB/s。
+> 快照只覆盖 35 个 git 包；剩余 1600+ 个 tarball 仍需联网下载，但几乎不会失败。
+> 构建**不能以 root 运行**（`config/options` 会拒绝），脚本在 root 下解包会自动把 `sources/` 属主改回仓库属主。
 
 **构建卡住 / 反复 clone 同一个包：**
 
