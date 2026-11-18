@@ -162,13 +162,22 @@ find <submodule>/ -maxdepth 1 -type f | head    # 空目录 = 假成功
 
 ### 快照方案
 
-```bash
-# 打包（15.5G -> 约 8.3G，zstd -T0 -12，约 3 分钟）
-tools/rk3566-port/snapshot-sources.sh . /root/sources-snapshot
+已发布的快照（8 卷 × 1.1G，共 8.3G）：
+https://github.com/use2008qq/rocknix-distribution-rk3566/releases/tag/sources-20261118
 
-# 新机器还原
-tools/rk3566-port/restore-sources.sh . /path/to/sources-git-<日期>.tar.zst
+```bash
+# 新机器：下载并还原（脚本自动识别分卷并校验 sha256）
+gh release download sources-20261118 \
+  --repo use2008qq/rocknix-distribution-rk3566 \
+  --pattern '*.part-*' --pattern '*.sha256' --dir ./snapshot
+tools/rk3566-port/restore-sources.sh . ./snapshot/sources-git-20261118-1157.tar.zst.part-00
+
+# 自己重新打包（15.5G -> 8.3G，zstd -T0 -12，约 3 分钟）
+tools/rk3566-port/snapshot-sources.sh . /root/sources-snapshot
+split -n 8 -d <包>.tar.zst <包>.tar.zst.part-
 ```
+
+> 下载/上传都**不要走代理**：实测直连 7.2 MB/s，走代理仅 575 KB/s（慢 12 倍）。
 
 还原后 pkgbuilder 判定仓库有效会直接复用，这 35 个包不再联网。
 

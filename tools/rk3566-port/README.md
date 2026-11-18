@@ -26,12 +26,21 @@ RK3566 / GM800 构建过程中写的排障与保障脚本。
 git clone https://github.com/use2008qq/rocknix-distribution-rk3566.git
 cd rocknix-distribution-rk3566
 
-# 有快照就还原，省掉 35 个 git 包的下载（最脆弱的 15.5G）
-tools/rk3566-port/restore-sources.sh . /path/to/sources-git-20261118-1157.tar.zst
+# 下载源码快照（8 卷，共 8.3G，直连约 20 分钟）
+gh release download sources-20261118 \
+  --repo use2008qq/rocknix-distribution-rk3566 \
+  --pattern '*.part-*' --pattern '*.sha256' \
+  --dir ./snapshot
+
+# 还原本地源码（自动识别分卷、自动校验 sha256）
+tools/rk3566-port/restore-sources.sh . ./snapshot/sources-git-20261118-1157.tar.zst.part-00
 
 # 剩余 1600+ 个 tarball 仍需下载，但几乎不会失败
 su builder -c './scripts/build_distro'
 ```
+
+> 快照地址：https://github.com/use2008qq/rocknix-distribution-rk3566/releases/tag/sources-20261118
+> 下载时**不要走代理**：实测直连 7.2 MB/s，走代理仅 575 KB/s。
 
 **构建卡住 / 反复 clone 同一个包：**
 
