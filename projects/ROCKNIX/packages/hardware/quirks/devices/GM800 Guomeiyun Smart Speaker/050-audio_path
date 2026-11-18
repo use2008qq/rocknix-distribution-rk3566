@@ -1,0 +1,16 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (C) 2026-present ROCKNIX (https://github.com/ROCKNIX)
+
+# GM800 音频：PDM 麦克风阵列 + 单扬声器（功放使能 gpio1 RK_PA6）
+#
+# 设备树里用的是 simple-audio-card（name = "ROCKCHIP,PDM Mic Array"），
+# 没有独立 codec，播放/录音都走同一张卡。
+# 下面的 mixer 路径需要首启动后用 `alsamixer` 确认实际名称再修正。
+
+cat <<EOF >/storage/.config/profile.d/002-audio_path
+ALSA_PRIMARY_CARD=0
+DEVICE_PLAYBACK_PATH="Playback Mux"
+DEVICE_PLAYBACK_PATH_SPK="Speaker"
+DEVICE_PLAYBACK_PATH_HP="Speaker"
+EOF

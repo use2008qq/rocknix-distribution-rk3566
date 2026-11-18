@@ -1,0 +1,21 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (C) 2026-present ROCKNIX (https://github.com/ROCKNIX)
+
+# GM800 国美云触屏音箱 (GM260200482)
+#
+# 原厂 BSP DTB 的 /model 是通用 EVB 名（"Rockchip RK3566 EVB2 LP4X V10 Board"），
+# 主线 DTB 改成 "GM800 Guomeiyun Smart Speaker"。
+# 这里确保 extlinux 选的是 GM800 的 DTB。
+
+DTB="rk3566-guomeiyun.dtb"
+
+if [ -f /flash/extlinux/extlinux.conf ]; then
+    if ! grep -q "${DTB}" /flash/extlinux/extlinux.conf; then
+        mount -o rw,remount /flash
+        sed -i "s#^[[:space:]]*FDT .*#  FDT /${DTB}#" /flash/extlinux/extlinux.conf
+        sync
+        echo "GM800: 已切换 DTB -> ${DTB}，重启生效"
+        reboot
+    fi
+fi

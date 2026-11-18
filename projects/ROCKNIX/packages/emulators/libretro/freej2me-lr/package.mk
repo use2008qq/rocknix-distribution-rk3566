@@ -13,6 +13,8 @@ PKG_TOOLCHAIN="make"
 PKG_MAKE_OPTS_TARGET="-C src/libretro"
 
 pre_configure_target() {
+  # freej2me 1.52 hardcodes Java 6 source/target; JDK 21 removed it -> bump to 8
+  sed -i 's/value="1.6"/value="1.8"/g' ${PKG_BUILD}/build.xml
   ${TOOLCHAIN}/bin/ant
 }
 

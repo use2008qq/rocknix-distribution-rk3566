@@ -9,6 +9,23 @@ PKG_LICENSE="GPL"
 PKG_SITE="https://www.libsdl.org/"
 PKG_URL="https://www.libsdl.org/release/SDL2-${PKG_VERSION}.tar.gz"
 PKG_DEPENDS_HOST="toolchain:host"
+# Host SDL2 is only a build-time tool for gzdoom-sa:host (sdl2-config/headers).
+# Disable all video/audio backends so cmake does not probe system X11:
+# the build host has libXext.so.6 but no Xext.h (libxext-dev is not installed).
+PKG_CMAKE_OPTS_HOST="
+  -DSDL_VIDEO=OFF \
+  -DSDL_X11=OFF \
+  -DSDL_WAYLAND=OFF \
+  -DSDL_KMSDRM=OFF \
+  -DSDL_OPENGL=OFF \
+  -DSDL_OPENGLES=OFF \
+  -DSDL_VULKAN=OFF \
+  -DSDL_ALSA=OFF \
+  -DSDL_PIPEWIRE=OFF \
+  -DSDL_PULSEAUDIO=OFF \
+  -DSDL_JACK=OFF \
+  -DSDL_SHARED=ON \
+  -DSDL_STATIC=OFF"
 PKG_DEPENDS_TARGET="toolchain alsa-lib systemd dbus pulseaudio libdrm"
 PKG_LONGDESC="Simple DirectMedia Layer is a cross-platform development library designed to provide low level access to audio, keyboard, mouse, joystick, and graphics hardware."
 
