@@ -1,8 +1,65 @@
 # rk3566-port tools
 
-RK3566 / GM800 构建过程中写的排障脚本。
+RK3566 / GM800 构建过程中写的排障与保障脚本。
 
-**注意：多数脚本内含硬编码路径**（`/root/CheckPoint/RKSOC/rk3566/workspace/Platform/rocknix/...`），换机器或换目录时需要先改路径。这些脚本不是构建流程的一部分，是出问题时的手工工具。
+**注意：多数脚本内含硬编码路径**（`/root/CheckPoint/RKSOC/rk3566/workspace/Platform/rocknix/...`），换机器时需要先改路径。
+
+---
+
+## 一、源码稳定性保障（推荐先用这套）
+
+问题的本质：`sources/` 下 **1600+ 个包是 tarball**（走 SHA256 校验，几乎不出错），
+但 **35 个是 git 仓库，共 15.5G，其中 28 个带子模块** —— 全部下载失败都出在这 35 个上。
+
+| 脚本 | 用途 |
+|---|---|
+| `snapshot-sources.sh` | 把这 35 个 git 包打包成 `sources-git-<日期>.tar.zst`（15.5G → 约 8.3G） |
+| `restore-sources.sh` | 一键还原（支持分卷），还原后 pkgbuilder 直接复用，不再联网 |
+| `repair-sources.sh` | 扫描/修复 detached HEAD、空工作树、未初始化子模块 |
+| `build-with-retry.sh` | 构建 + 失败自动修复 + 重跑（最多 N 次） |
+
+### 典型用法
+
+**新机器首次构建：**
+
+```bash
+git clone https://github.com/use2008qq/rocknix-distribution-rk3566.git
+cd rocknix-distribution-rk3566
+
+# 有快照就还原，省掉 35 个 git 包的下载（最脆弱的 15.5G）
+tools/rk3566-port/restore-sources.sh . /path/to/sources-git-20261118-1157.tar.zst
+
+# 剩余 1600+ 个 tarball 仍需下载，但几乎不会失败
+su builder -c './scripts/build_distro'
+```
+
+**构建卡住 / 反复 clone 同一个包：**
+
+```bash
+# 先 Ctrl-C 停掉，再修复
+tools/rk3566-port/repair-sources.sh . --fix
+su builder -c './scripts/build_distro'
+```
+
+**全自动：**
+
+```bash
+tools/rk3566-port/build-with-retry.sh 3 /path/to/sources-git-20261118-1157.tar.zst
+```
+
+### 快照分卷（GitHub Release 单文件限制 2G）
+
+```bash
+# 拆分
+split -b 1800M sources-git-20261118-1157.tar.zst sources-git-20261118-1157.tar.zst.part-
+
+# 还原时脚本会自动识别并合并
+restore-sources.sh . sources-git-20261118-1157.tar.zst.part-aa
+```
+
+---
+
+## 二、构建与监控
 
 | 脚本 | 用途 |
 |---|---|
@@ -12,6 +69,11 @@ RK3566 / GM800 构建过程中写的排障脚本。
 | `watch2.sh` | 盯构建进度（带包级过滤） |
 | `check_missing_sources.py` | 扫描 `sources/` 下缺失或为空的包 |
 | `fix_file_source.sh` | 修复 `file://` 类型源码未落盘 |
+
+## 三、设备树 / 镜像
+
+| 脚本 | 用途 |
+|---|---|
 | `build_dts.sh` | 编译并提取设备树 |
 | `fix_dts.py` | 修正 dts 中的节点/引用错误 |
 | `dts_extract.py` | 从镜像或 dtb 中提取 dts |
@@ -22,7 +84,7 @@ RK3566 / GM800 构建过程中写的排障脚本。
 
 ---
 
-## 常用排查片段
+## 四、常用排查片段
 
 **某个包卡在反复 clone？**
 
@@ -30,19 +92,17 @@ RK3566 / GM800 构建过程中写的排障脚本。
 tail -f build.ROCKNIX-RK3566.aarch64/.threads/logs/<seq>.log
 ```
 
-配合 `docs`（见 `documentation/PER_DEVICE_DOCUMENTATION/RK3566/GM800-PORT-NOTES.md`）里的 get_git 判定链分析。
-
 **子模块是否真的下全了？**
 
 ```bash
 cd sources/<pkg>/<pkg>-<version>
-git submodule status --recursive | grep '^-'
+git submodule status --recursive | grep '^-'    # '-' 开头 = 未初始化
 ```
 
-**清理单个包重来：**
+**单包重来：**
 
 ```bash
 B=build.ROCKNIX-RK3566.aarch64
-rm -rf $B/build/<pkg>-<version>      # 强制重新 unpack
-rm -rf sources/<pkg>/<pkg>-<version> # 连源码一起重下
+rm -rf $B/build/<pkg>-<version>       # 强制重新 unpack
+rm -rf sources/<pkg>/<pkg>-<version>  # 连源码一起重下
 ```

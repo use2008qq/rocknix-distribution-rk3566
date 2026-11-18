@@ -142,3 +142,64 @@ find <submodule>/ -maxdepth 1 -type f | head    # 空目录 = 假成功
 - 剩余任务：`plan.json` 是 `[{task,name,section,wants,unpacks}]` 列表，**无 index 字段**，需按 `(name, task)` 与 joblog 第 5、4 列做多重集匹配
 - 长命令用 `setsid nohup` 后台 + 日志轮询，避免 SSH 断连中断
 - **不要用 `pkill -f`** 清理构建进程，极易误杀自己的 SSH 会话；用精确 PID
+
+---
+
+## 六、源码层稳定性保障（避免重复下载）
+
+### 问题边界
+
+本次构建后统计 `sources/`（24G）：
+
+| 类型 | 数量 | 稳定性 |
+|---|---|---|
+| tarball / zip | 1636 | 走 `PKG_SHA256` 校验，失败率极低 |
+| **git 仓库** | **35（15.5G）** | **全部下载失败都出在这里，其中 28 个带子模块** |
+
+体积集中在少数大包：`ppsspp-sa` 3.1G、`dolphin-sa` 2.1G、`dolphin-lr` 1.7G、`vita3k-sa` 1.5G、`flycast-sa`/`flycast-lr` 各 1.0G、`azahar-sa` 898M。
+
+**结论：只要把这 15.5G 保住，第二层的不稳定基本解决。**
+
+### 快照方案
+
+```bash
+# 打包（15.5G -> 约 8.3G，zstd -T0 -12，约 3 分钟）
+tools/rk3566-port/snapshot-sources.sh . /root/sources-snapshot
+
+# 新机器还原
+tools/rk3566-port/restore-sources.sh . /path/to/sources-git-<日期>.tar.zst
+```
+
+还原后 pkgbuilder 判定仓库有效会直接复用，这 35 个包不再联网。
+
+> 快照只含 git 类包，不含 1636 个 tarball —— 后者下载失败率低，且压缩后体积占比小，不值得一并打包。
+
+### 状态巡检
+
+`repair-sources.sh` 会扫描全部 35 个 git 包，检查三类致命状态：
+
+| 状态 | 后果 | 修复 |
+|---|---|---|
+| HEAD detached | `git switch --force` 失败 → 判定无效 → **删库重下死循环** | `git checkout -B rocknix-pin` |
+| 工作树为空 | CMake `add_subdirectory` 失败 | 需重新下载 |
+| 子模块仅登记 gitlink | 编译时找不到源文件 | `git submodule update --init --recursive` |
+
+```bash
+tools/rk3566-port/repair-sources.sh .          # 只检查
+tools/rk3566-port/repair-sources.sh . --fix    # 检查并修复
+```
+
+**本次检查实际发现 `dolphin-lr` 和 `vita3k-sa` 处于 detached HEAD**，已修复。这两个包若下次构建被判定无效，会白等 20～30 分钟重新下载。
+
+已知故意跳过的子模块（脚本不会尝试拉取）：
+
+- `ppsspp-lr` 的 `ffmpeg` — 用占位 `ffmpeg/linux_arm64.sh` 替代（`USE_SYSTEM_FFMPEG=ON`）
+- `dolphin-sa` / `vita3k-sa` 的 `Externals/Qt` — Windows 预编译，Linux 用系统 qt6
+
+### 自动重试
+
+```bash
+tools/rk3566-port/build-with-retry.sh 3 /path/to/sources-git-<日期>.tar.zst
+```
+
+失败后依次：打印失败任务 → 检查 git 包数量是否减少（减少说明触发了删库重下，自动还原快照）→ 修复源码状态 → 重跑。pkgbuilder 靠 `joblog` 跳过已完成包，不会从头再来。
