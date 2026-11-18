@@ -33,31 +33,37 @@ fi
 [ -f "${ARCHIVE}" ] || { echo "错误: 快照不存在: ${ARCHIVE}" >&2; exit 1; }
 
 TMP=""
+SHA=""
 cleanup() { [ -n "${TMP}" ] && rm -f "${TMP}"; }
 trap cleanup EXIT
 
 # 分卷处理
 if [[ "${ARCHIVE}" == *.part-* ]]; then
     PREFIX="${ARCHIVE%%.part-*}"
+    SHA="${PREFIX}.sha256"
     echo "检测到分卷，合并中..."
     parts=( "${PREFIX}".part-* )
     echo "  ${#parts[@]} 个分卷"
     TMP="$(mktemp -u /tmp/sources-restore-XXXXXX.tar.zst)"
     cat "${parts[@]}" > "${TMP}"
     ARCHIVE="${TMP}"
+else
+    SHA="${ARCHIVE}.sha256"
 fi
 
-# 校验
-if [ -f "${ARCHIVE}.sha256" ]; then
+# 校验（只比对哈希值，不依赖文件名字段，兼容分卷合并后的临时文件）
+if [ -f "${SHA}" ]; then
     echo "校验快照完整性..."
-    ( cd "$(dirname "${ARCHIVE}")" && sha256sum -c "$(basename "${ARCHIVE}").sha256" ) || {
-        echo "错误: sha256 校验失败，快照可能损坏" >&2; exit 1
-    }
-elif [ -f "${ARCHIVE%.part-*}.sha256" ]; then
-    echo "校验合并后的快照..."
-    sha256sum -c "${ARCHIVE%.part-*}.sha256" || {
-        echo "错误: sha256 校验失败" >&2; exit 1
-    }
+    want="$(awk '{print $1}' "${SHA}" | head -1)"
+    got="$(sha256sum "${ARCHIVE}" | awk '{print $1}')"
+    if [ "${want}" = "${got}" ]; then
+        echo "  sha256 OK"
+    else
+        echo "错误: sha256 校验失败" >&2
+        echo "  期望: ${want}" >&2
+        echo "  实际: ${got}" >&2
+        exit 1
+    fi
 fi
 
 mkdir -p "${SOURCES}"
